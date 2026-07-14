@@ -352,6 +352,17 @@ def transform(data):
     inactive_categories_with_sales = [c for c in inactive_category_names if c in categories_in_sales]
     if inactive_categories_with_sales:
         print(f"Warning: sales found for categories marked inactive in the reference data: {inactive_categories_with_sales}")
+
+    # Data quality check: categories with sales but no entry at all in the
+    # reference table (no row, not even inactive). Same logic as the
+    # missing-country check further down, applied to categories: the scraped
+    # catalog covers more categories than category_rules defines for this
+    # exercise.
+    known_category_names = df_category_rules["category_name"].tolist()
+    categories_missing_from_reference = [c for c in categories_in_sales if c not in known_category_names]
+    if categories_missing_from_reference:
+        print(f"Warning: categories found in sales but with no entry at all in the reference data: {categories_missing_from_reference}")
+
  
     # Revenue per sale line.
     # discount_rate is a discount rate (e.g. 0.15 = 15% off), so it must be
@@ -411,11 +422,21 @@ def transform(data):
 
 def load(results, db_path=f"{OUTPUT_DIR}/bookworld_final.db", schema_path="schema_final.sql"):
     """
-    Create the final database from schema_final.sql (if not already created)
-    and load each cleaned/aggregated DataFrame into its matching table.
+    Create the final database from schema_final.sql and load each
+    cleaned/aggregated DataFrame into its matching table.
+
+    The database file is deleted first if it already exists, so each run
+    starts from a clean schema rather than appending on top of a previous
+    run's data (which would duplicate rows). Recreating the schema from
+    schema_final.sql each time also guarantees the PRIMARY KEY/FOREIGN KEY
+    constraints are always in place - to_sql(if_exists="append") only
+    inserts into whatever table structure is already there.
     """
     try:
         os.makedirs(OUTPUT_DIR, exist_ok=True)
+        if os.path.exists(db_path):
+            os.remove(db_path)
+
         conn = sqlite3.connect(db_path)
         conn.execute("PRAGMA foreign_keys = ON")
     except (OSError, sqlite3.Error) as e:

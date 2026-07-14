@@ -28,27 +28,20 @@ SECRET_TOKEN = os.getenv("BOOKWORLD_API_TOKEN")
 def require_token(route_function):
     """
     Decorator that protects a route with a simple token check.
-    Accepts the token two ways, for convenience:
-      - Header: "Authorization: Bearer <token>" (recommended, more secure -
-        e.g. via curl/Postman, doesn't end up in browser history or logs)
-      - URL query parameter: "?token=<token>" (convenient to test directly
-        in a browser address bar, but less secure - the token then appears
-        in browser history and server access logs)
-    Returns 401 if missing or incorrect.
+    Expects a header "Authorization: Bearer <token>" matching
+    BOOKWORLD_API_TOKEN. Returns 401 if missing or incorrect.
+
+    Header only (no URL query paramter fallback):
+    this is the standard practice for a production REST API.
     """
     @wraps(route_function)
     def wrapper(*args, **kwargs):
         auth_header = request.headers.get("Authorization", "")
 
-        if auth_header.startswith("Bearer "):
-            token = auth_header.removeprefix("Bearer ")
-        else:
-            #Fall back to ?toekn=... in the URL
-            token = request.args.get("token")
+        if not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Missing (or malformed) Authorization header"}), 401
 
-        if not token:
-            return jsonify({"error": "Missing token (Authorization header or ?token= in the URL)"}), 401
-
+        token = auth_header.removeprefix("Bearer ")
         if token != SECRET_TOKEN:
             return jsonify({"error": "Invalid token"}), 401
 
